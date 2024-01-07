@@ -1,0 +1,175 @@
+---
+title: "Q3 ASS"
+author: "Siphiwe Bogatsu"
+date: "2023-10-12"
+output: html_document
+---
+
+```{r}
+
+# add packages and data
+rm(list = ls())
+pacman::p_load("ggplot2", "caret", "dplyr", "corrplot", "xgboost", "glmnet", "Matrix", "tree")
+park = read.csv("Q3dat.csv")
+
+
+# Check for missing values 
+cat("Number of missing value:", sum(is.na(park)), "\n")
+
+# Summary 
+summary(park)
+
+## Correlation between numeric var. 
+numeric.var <- sapply(park, is.numeric)
+corr.matrix <- cor(park[,numeric.var])
+pdf("parkcorr.pdf")
+corrplot(corr.matrix, order = "hclust", tl.col = "black",
+         tl.srt=45, tl.cex=0.5, cl.cex=0.5,
+         method = "circle", 
+         type   = "upper"
+          )
+dev.off()
+
+
+
+# Let's talk about sex 
+park$sex = as.factor(park$sex)
+
+boxplot1 = ggplot(park, aes(total_UPDRS, sex)) + 
+           geom_boxplot(fill = "skyblue") +
+           labs( x = "Total UPDRS") + 
+           theme()
+
+ggsave("parkbox.png", boxplot1)
+```
+
+## Fit the XG Boost Model
+
+-   No. of trees (B) 500 - 10 000
+
+-   Learning rate (\\lambda) - (0.001, 0.005, 0.01)
+
+-   number of splits in each tree - (1 - 10 )
+
+```{r}
+park$sex = park$sex |> 
+            factor()
+
+set.seed(1098)
+
+## Using caret for train/test split:
+set.seed(4026)
+train_index <- createDataPartition(y = park$total_UPDRS, p = 0.8, list = FALSE)
+park_train <- park[train_index,]
+park_test <- park[-train_index,]
+
+park_xgb_grid        = expand.grid(nrounds = seq(500, 10000, 500),  #number of trees
+                               max_depth = 1:10,               #interaction depth
+                               eta = c(0.01, 0.005, 0.001),              #learning rate
+                               gamma = 0.001,                     #mindev
+                               colsample_bytree = c(1, 0.5),      #proportion random                                                                          features per tree
+                             
+                               min_child_weight = 1,              #also controls tree depth
+                               subsample = 1)                     #bootstrap proportion
+
+ctrl                 =  trainControl(method = 'cv', number = 10, verboseIter = T)
+park_xgb_gridsearch  =  train( total_UPDRS ~ ., data = park_train,
+                              method = 'xgbTree',
+                              trControl = ctrl,
+                              verbose = T,
+                              tuneGrid = park_xgb_grid)
+
+
+# Plot to see your results 
+plot(park_xgb_gridsearch)
+
+# 
+```
+
+## Fit a Ridge Regression
+
+```{r}
+# split the data 
+set.seed(2030)
+sample = sample(1:nrow(park), size = 0.8*nrow(park))
+train  = park[train, ]
+test   = park[-train, ]
+
+x      = train[, -3]
+y      = train[, 3]
+
+
+# use glmnet to fit a regularised model
+library(glmnet)
+ridge <- glmnet(x, y, alpha = 0, standardize = T,
+                lambda = exp(seq(-2, 8, length.out = 100)))
+plot(ridge, xvar = 'lambda', label = T)
+
+
+#Apply 10-fold CV
+set.seed(2023)
+ridge_cv <- cv.glmnet(as.matrix(x), y,
+                      alpha = 0, nfolds = 10, type.measure = 'mse', standardise = T,
+                      lambda = exp(seq(-2, 8, length.out = 100))) 
+
+plot(ridge_cv)
+abline(h = ridge_cv$cvup[which.min(ridge_cv$cvm)], lty = 2)
+
+
+ridge_cv$lambda.1se
+round(cbind(coef(ridge_cv, s = 'lambda.min'), coef(ridge_cv, s = 'lambda.1se')), 3)
+
+
+
+### prediction accuracy ??
+test_x = 
+predict(ridge_cv, test_x, s = 'lambda.1se') 
+
+rlm_pred = predict(rlm, as.matrix(x), type = "response")
+
+sum((y - rlm_pred)^2)/nrow(x)
+```
+
+## Fitting a Random Forest.
+
+```{r}
+{r}
+library(randomForest)
+# Train/test split
+set.seed(4026)
+train <- sample(1:nrow(park), 0.8*nrow(park))
+
+
+## fit and evaluate. 
+# Bagging
+bag_250_time <- system.time(
+  Q3dat_bag <- randomForest(total_UPDRS ~ ., data = park, subset = train,
+                            mtry = ncol(park) - 1, #Use all features (minus response)
+                            ntree = 250,
+                            importance = T,         #Keep track of importance (faster without)
+                            do.trace = 25,         #Can keep track of progress if we want
+                            na.action = na.exclude)
+)
+
+# Random Forest
+rf_250_time <- system.time(
+  Q3dat_rf <- randomForest(total_UPDRS ~ ., data = park, subset = train,
+                           ntree = 250,
+                           importance = T,
+                           na.action = na.exclude,
+                           do.trace = 25)
+)
+
+
+
+#### PLOT OOB MSE ERROR
+plot(Q3dat_bag$mse, type = 'l', xlab = 'Number of trees', ylab = 'OOB MSE',
+     col = 'blue', lwd = 2, ylim = c(0, max(Q3dat_rf$mse)))
+lines(Q3dat_rf$mse, col = 'darkgreen', lwd = 2, type = 's')
+legend('topright', legend = c('Bagging', 'Random Forest'),
+       col = c('blue', 'darkgreen'), lwd = 2)
+
+
+```
+
+## 
