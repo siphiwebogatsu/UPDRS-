@@ -7,16 +7,16 @@ output: html_document
 
 ```{r}
 
-# add packages and data
+## add packages and data
 rm(list = ls())
 pacman::p_load("ggplot2", "caret", "dplyr", "corrplot", "xgboost", "glmnet", "Matrix", "tree")
 park = read.csv("Q3dat.csv")
 
 
-# Check for missing values 
+## Check for missing values 
 cat("Number of missing value:", sum(is.na(park)), "\n")
 
-# Summary 
+## Summary Statistics 
 summary(park)
 
 ## Correlation between numeric var. 
@@ -32,7 +32,7 @@ dev.off()
 
 
 
-# Let's talk about sex 
+## Let's talk about sex 
 park$sex = as.factor(park$sex)
 
 boxplot1 = ggplot(park, aes(total_UPDRS, sex)) + 
@@ -82,8 +82,7 @@ park_xgb_gridsearch  =  train( total_UPDRS ~ ., data = park_train,
 
 # Plot to see your results 
 plot(park_xgb_gridsearch)
-
-# 
+ 
 ```
 
 ## Fit a Ridge Regression
@@ -122,9 +121,7 @@ round(cbind(coef(ridge_cv, s = 'lambda.min'), coef(ridge_cv, s = 'lambda.1se')),
 
 
 ### prediction accuracy ??
-test_x = 
-predict(ridge_cv, test_x, s = 'lambda.1se') 
-
+test_x =  predict(ridge_cv, test_x, s = 'lambda.1se') 
 rlm_pred = predict(rlm, as.matrix(x), type = "response")
 
 sum((y - rlm_pred)^2)/nrow(x)
@@ -133,7 +130,7 @@ sum((y - rlm_pred)^2)/nrow(x)
 ## Fitting a Random Forest.
 
 ```{r}
-{r}
+
 library(randomForest)
 # Train/test split
 set.seed(4026)
@@ -172,4 +169,4 @@ legend('topright', legend = c('Bagging', 'Random Forest'),
 
 ```
 
-## 
+
